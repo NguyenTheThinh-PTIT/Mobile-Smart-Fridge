@@ -23,6 +23,20 @@ public class ChatController {
 
   private final ChatOrchestratorService chatOrchestratorService;
 
+  /**
+   * Controller for chat-related endpoints.
+   * Exposes endpoints to send messages and fetch chat history for the current
+   * user or a session.
+   */
+
+  /**
+   * Send a chat message to the AI assistant.
+   * Request: ChatDtos.ChatMessageRequest { message: string, sessionId?: number }
+   * Response: ChatDtos.ChatResponse { sessionId, answer, sources, hasSources, ...
+   * }
+   * If sessionId is null, the server will resolve or create a session for the
+   * current user.
+   */
   @PostMapping("/send")
   public ApiResponse<ChatDtos.ChatResponse> send(
       @RequestHeader(value = "Authorization", required = false) String authorization,
@@ -30,6 +44,13 @@ public class ChatController {
     return ApiResponse.success(chatOrchestratorService.sendMessage(authorization, request));
   }
 
+  /**
+   * Get chat history for the current authenticated user (resolved from JWT
+   * Authorization).
+   * The "current user" is the user id extracted from the Authorization header.
+   * Default limit is applied when omitted. Mobile clients sometimes send the
+   * strings "undefined" or "null" — parseLimit handles those gracefully.
+   */
   @GetMapping("/history")
   public ApiResponse<ChatDtos.ChatHistoryResponse> getMyChatHistory(
       @RequestHeader(value = "Authorization", required = false) String authorization,
@@ -40,7 +61,8 @@ public class ChatController {
   }
 
   /**
-   * Get chat message history for a given session. Returns all messages in chronological order
+   * Get chat message history for a given session. Returns all messages in
+   * chronological order
    * (oldest first).
    *
    * @param sessionId the chat session ID
@@ -55,6 +77,13 @@ public class ChatController {
     }
     return ApiResponse.success(chatOrchestratorService.getChatHistory(safeSessionId));
   }
+
+  /**
+   * Returns all messages for a given session in chronological order (oldest
+   * first).
+   * If the client passes the literal strings "undefined" or "null" (common from
+   * mobile navigation), parseSessionId will treat them as null.
+   */
 
   private Integer parseLimit(String rawLimit) {
     if (rawLimit == null || rawLimit.isBlank()) {

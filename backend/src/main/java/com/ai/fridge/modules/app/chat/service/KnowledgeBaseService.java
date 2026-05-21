@@ -37,6 +37,14 @@ public class KnowledgeBaseService {
     this.queryEmbeddingModel = queryEmbeddingModel;
   }
 
+  /**
+   * Retrieve relevant recipe context for a query using hybrid retrieval.
+   * Combines query embeddings (cosine distance) with a keyword boost for name
+   * matches.
+   * 
+   * @param query      user query text
+   * @param maxResults max number of results to return
+   */
   public KnowledgeBaseContext findRelevantContext(String query, int maxResults) {
     // Luồng chat chỉ SELECT, không được phép đồng bộ (avoid N+1 query problem)
     // ensureRecipeVectorsSynced() được gọi tại startup, không gọi mỗi khi
@@ -50,9 +58,8 @@ public class KnowledgeBaseService {
     String keywordPhrase = extractDishPhrase(query);
     String queryVector = toVectorLiteral(queryEmbeddingModel.embed(query).content().vector());
 
-    List<RecipeHit> hits =
-        jdbcTemplate.query(
-            """
+    List<RecipeHit> hits = jdbcTemplate.query(
+        """
             WITH scored AS MATERIALIZED (
               SELECT rv.recipe_id,
                      r.name,
@@ -74,18 +81,17 @@ public class KnowledgeBaseService {
             ORDER BY keyword_match DESC, distance ASC
             LIMIT ?
             """,
-            (rs, rowNum) ->
-                new RecipeHit(
-                    rs.getLong("recipe_id"),
-                    rs.getString("name"),
-                    rs.getString("source_text"),
-                    rs.getDouble("relevance")),
-            queryVector,
-            keywordPhrase,
-            keywordPhrase,
-            keywordPhrase,
-            keywordPhrase,
-            limit);
+        (rs, rowNum) -> new RecipeHit(
+            rs.getLong("recipe_id"),
+            rs.getString("name"),
+            rs.getString("source_text"),
+            rs.getDouble("relevance")),
+        queryVector,
+        keywordPhrase,
+        keywordPhrase,
+        keywordPhrase,
+        keywordPhrase,
+        limit);
 
     log.info(
         "[KB] query='{}' keywordPhrase='{}' limit={} hitCount={}",
@@ -94,27 +100,28 @@ public class KnowledgeBaseService {
         limit,
         hits.size());
 
-    List<ChatDtos.ChatSourceDto> sources =
-        hits.stream()
-            .map(
-                hit ->
-                    new ChatDtos.ChatSourceDto(
-                        "recipe",
-                        hit.recipeName(),
-                        String.valueOf(hit.recipeId()),
-                        truncate(hit.sourceText(), 400)))
-            .toList();
+    List<ChatDtos.ChatSourceDto> sources = hits.stream()
+        .map(
+            hit -> new ChatDtos.ChatSourceDto(
+                "recipe",
+                hit.recipeName(),
+                String.valueOf(hit.recipeId()),
+                truncate(hit.sourceText(), 400)))
+        .toList();
 
-    String contextText =
-        hits.isEmpty()
-            ? "Không có công thức liên quan đủ mạnh từ knowledge base hiện tại."
-            : hits.stream()
-                .map(this::formatHitForPrompt)
-                .collect(Collectors.joining("\n\n---\n\n"));
+    String contextText = hits.isEmpty()
+        ? "Không có công thức liên quan đủ mạnh từ knowledge base hiện tại."
+        : hits.stream()
+            .map(this::formatHitForPrompt)
+            .collect(Collectors.joining("\n\n---\n\n"));
 
     return new KnowledgeBaseContext(contextText, sources);
   }
 
+  /**
+   * Ensure a single recipe's vector is upserted into the vector store.
+   * Called when a recipe is created or updated.
+   */
   public void syncRecipe(Long recipeId) {
     if (recipeId == null || recipeId <= 0) {
       return;
@@ -122,10 +129,12 @@ public class KnowledgeBaseService {
     upsertRecipeVector(recipeId);
   }
 
+  /**
+   * Walk all recipes and ensure embeddings exist in the vector store.
+   */
   public void ensureRecipeVectorsSynced() {
-    List<Long> recipeIds =
-        jdbcTemplate.query(
-            "SELECT id FROM recipe ORDER BY id ASC", (rs, rowNum) -> rs.getLong("id"));
+    List<Long> recipeIds = jdbcTemplate.query("SELECT id FROM recipe ORDER BY id ASC",
+        (rs, rowNum) -> rs.getLong("id"));
 
     for (Long recipeId : recipeIds) {
       upsertRecipeVector(recipeId);
@@ -133,33 +142,33 @@ public class KnowledgeBaseService {
   }
 
   /**
-   * TASK 2: Startup Sync - Gọi ensureRecipeVectorsSynced() chỉ một lần khi Backend khởi động Chạy
-   * trong thread riêng để không làm chặn quá trình Spring Boot startup
+   * Run a background sync of recipe vectors once the application is ready.
+   * Executed in a separate thread to avoid blocking Spring startup.
    */
   @EventListener(ApplicationReadyEvent.class)
   public void initializeRecipeVectorsOnStartup() {
-    Thread syncThread =
-        new Thread(
-            () -> {
-              try {
-                log.info("[KB STARTUP] Starting recipe vectors sync on application ready...");
-                long startTime = System.currentTimeMillis();
+    Thread syncThread = new Thread(
+        () -> {
+          try {
+            log.info("[KB STARTUP] Starting recipe vectors sync on application ready...");
+            long startTime = System.currentTimeMillis();
 
-                ensureRecipeVectorsSynced();
+            ensureRecipeVectorsSynced();
 
-                long duration = System.currentTimeMillis() - startTime;
-                log.info("[KB STARTUP] Recipe vectors sync completed in {} ms", duration);
-              } catch (Exception ex) {
-                log.error("[KB STARTUP] Failed to sync recipe vectors on startup", ex);
-              }
-            },
-            "KnowledgeBase-Sync-Thread");
+            long duration = System.currentTimeMillis() - startTime;
+            log.info("[KB STARTUP] Recipe vectors sync completed in {} ms", duration);
+          } catch (Exception ex) {
+            log.error("[KB STARTUP] Failed to sync recipe vectors on startup", ex);
+          }
+        },
+        "KnowledgeBase-Sync-Thread");
 
     syncThread.setDaemon(false);
     syncThread.start();
   }
 
-  public record KnowledgeBaseContext(String contextText, List<ChatDtos.ChatSourceDto> sources) {}
+  public record KnowledgeBaseContext(String contextText, List<ChatDtos.ChatSourceDto> sources) {
+  }
 
   private void upsertRecipeVector(Long recipeId) {
     RecipeDocument recipeDocument = loadRecipeDocument(recipeId);
@@ -168,11 +177,10 @@ public class KnowledgeBaseService {
     }
 
     String contentHash = sha256(recipeDocument.sourceText());
-    List<String> existingHashes =
-        jdbcTemplate.query(
-            "SELECT content_hash FROM recipe_vectors WHERE recipe_id = ? LIMIT 1",
-            (rs, rowNum) -> rs.getString("content_hash"),
-            recipeId);
+    List<String> existingHashes = jdbcTemplate.query(
+        "SELECT content_hash FROM recipe_vectors WHERE recipe_id = ? LIMIT 1",
+        (rs, rowNum) -> rs.getString("content_hash"),
+        recipeId);
 
     if (!existingHashes.isEmpty() && Objects.equals(existingHashes.get(0), contentHash)) {
       return;
@@ -213,9 +221,8 @@ public class KnowledgeBaseService {
   }
 
   private RecipeDocument loadRecipeDocument(Long recipeId) {
-    List<RecipeDocument> documents =
-        jdbcTemplate.query(
-            """
+    List<RecipeDocument> documents = jdbcTemplate.query(
+        """
             SELECT r.id,
                    r.name,
                    r.instructions,
@@ -224,17 +231,16 @@ public class KnowledgeBaseService {
             FROM recipe r
             WHERE r.id = ?
             """,
-            (rs, rowNum) ->
-                new RecipeDocument(
-                    rs.getLong("id"),
-                    rs.getString("name"),
-                    rs.getString("instructions"),
-                    rs.getObject("cook_time_minutes") == null
-                        ? null
-                        : rs.getInt("cook_time_minutes"),
-                    rs.getString("difficulty"),
-                    null),
-            recipeId);
+        (rs, rowNum) -> new RecipeDocument(
+            rs.getLong("id"),
+            rs.getString("name"),
+            rs.getString("instructions"),
+            rs.getObject("cook_time_minutes") == null
+                ? null
+                : rs.getInt("cook_time_minutes"),
+            rs.getString("difficulty"),
+            null),
+        recipeId);
 
     if (documents.isEmpty()) {
       return null;
@@ -242,36 +248,32 @@ public class KnowledgeBaseService {
 
     RecipeDocument baseDocument = documents.get(0);
 
-    List<String> ingredients =
-        jdbcTemplate.query(
-            """
+    List<String> ingredients = jdbcTemplate.query(
+        """
             SELECT f.name, rf.require_quantity, rf.unit
             FROM recipe_food rf
             JOIN food f ON f.id = rf.food_id
             WHERE rf.recipe_id = ?
             ORDER BY rf.id ASC
             """,
-            (rs, rowNum) ->
-                String.format(
-                    Locale.ROOT,
-                    "- %s: %s %s",
-                    rs.getString("name"),
-                    formatQuantity(rs.getDouble("require_quantity")),
-                    rs.getString("unit")),
-            recipeId);
+        (rs, rowNum) -> String.format(
+            Locale.ROOT,
+            "- %s: %s %s",
+            rs.getString("name"),
+            formatQuantity(rs.getDouble("require_quantity")),
+            rs.getString("unit")),
+        recipeId);
 
-    List<String> steps =
-        jdbcTemplate.query(
-            """
+    List<String> steps = jdbcTemplate.query(
+        """
             SELECT step_number, instruction
             FROM recipe_step
             WHERE recipe_id = ?
             ORDER BY step_number ASC
             """,
-            (rs, rowNum) ->
-                String.format(
-                    Locale.ROOT, "%d. %s", rs.getInt("step_number"), rs.getString("instruction")),
-            recipeId);
+        (rs, rowNum) -> String.format(
+            Locale.ROOT, "%d. %s", rs.getInt("step_number"), rs.getString("instruction")),
+        recipeId);
 
     StringBuilder sourceText = new StringBuilder();
     sourceText.append("Tên món: ").append(baseDocument.name()).append('\n');
@@ -333,13 +335,13 @@ public class KnowledgeBaseService {
 
     String lowered = normalized.toLowerCase(Locale.ROOT);
     String[] prefixes = {
-      "goi y cong thuc",
-      "gợi ý công thức",
-      "goi y mon",
-      "gợi ý món",
-      "cong thuc",
-      "công thức",
-      "recipe"
+        "goi y cong thuc",
+        "gợi ý công thức",
+        "goi y mon",
+        "gợi ý món",
+        "cong thuc",
+        "công thức",
+        "recipe"
     };
 
     for (String prefix : prefixes) {
@@ -382,7 +384,8 @@ public class KnowledgeBaseService {
     return builder.append(']').toString();
   }
 
-  private record RecipeHit(Long recipeId, String recipeName, String sourceText, Double relevance) {}
+  private record RecipeHit(Long recipeId, String recipeName, String sourceText, Double relevance) {
+  }
 
   private record RecipeDocument(
       Long recipeId,
@@ -390,5 +393,6 @@ public class KnowledgeBaseService {
       String instructions,
       Integer cookTimeMinutes,
       String difficulty,
-      String sourceText) {}
+      String sourceText) {
+  }
 }

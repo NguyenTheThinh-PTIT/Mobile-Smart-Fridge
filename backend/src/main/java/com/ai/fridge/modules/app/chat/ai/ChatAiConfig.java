@@ -36,6 +36,10 @@ public class ChatAiConfig {
   }
 
   @Bean
+  /**
+   * Build and configure the Gemini chat model client.
+   * Temperature and timeouts are tuned for factual food/inventory advice.
+   */
   public GoogleAiGeminiChatModel chatModel() {
     String apiKey = geminiApiKey();
     if (apiKey.isBlank()) {
@@ -44,14 +48,21 @@ public class ChatAiConfig {
     return GoogleAiGeminiChatModel.builder()
         .apiKey(apiKey)
         .modelName(geminiModelName())
+        // Low temperature to keep responses factual and reduce creative hallucination
         .temperature(0.2d)
         .maxOutputTokens(1024)
+        // Gemini on free-tier can be slow occasionally; 60s prevents premature timeouts
         .timeout(Duration.ofSeconds(60))
         .logRequestsAndResponses(true)
         .build();
   }
 
   @Bean(name = "documentEmbeddingModel")
+  /**
+   * Embedding model configured for document/indexing tasks.
+   * Uses RETRIEVAL_DOCUMENT task type to produce embeddings optimized for
+   * storage/indexing.
+   */
   public EmbeddingModel documentEmbeddingModel() {
     String apiKey = geminiApiKey();
     if (apiKey.isBlank()) {
@@ -61,14 +72,22 @@ public class ChatAiConfig {
     return GoogleAiEmbeddingModel.builder()
         .apiKey(apiKey)
         .modelName(geminiEmbeddingModelName())
+        // Use the DOCUMENT taskType to optimize embeddings for indexing (store-side)
         .taskType(GoogleAiEmbeddingModel.TaskType.RETRIEVAL_DOCUMENT)
+        // Match pgvector column dimensionality in DB to avoid casting errors
         .outputDimensionality(768)
+        // Embedding calls also use a 60s timeout for reliability on free tiers
         .timeout(Duration.ofSeconds(60))
         .logRequestsAndResponses(false)
         .build();
   }
 
   @Bean(name = "queryEmbeddingModel")
+  /**
+   * Embedding model configured for query/search tasks.
+   * Uses RETRIEVAL_QUERY task type to produce embeddings optimized for
+   * nearest-neighbor lookup.
+   */
   public EmbeddingModel queryEmbeddingModel() {
     String apiKey = geminiApiKey();
     if (apiKey.isBlank()) {
@@ -78,7 +97,10 @@ public class ChatAiConfig {
     return GoogleAiEmbeddingModel.builder()
         .apiKey(apiKey)
         .modelName(geminiEmbeddingModelName())
+        // Use the QUERY taskType to optimize embeddings for search/recall (better
+        // cosine results)
         .taskType(GoogleAiEmbeddingModel.TaskType.RETRIEVAL_QUERY)
+        // Keep same dimensionality as document embeddings so cosine comparisons work
         .outputDimensionality(768)
         .timeout(Duration.ofSeconds(60))
         .logRequestsAndResponses(false)
@@ -86,6 +108,11 @@ public class ChatAiConfig {
   }
 
   private static class DisabledEmbeddingModel implements EmbeddingModel {
+    /**
+     * Fallback embedding model used when no API key is configured.
+     * Returns an empty embedding response so the application can degrade gracefully
+     * without throwing exceptions during lookup or startup.
+     */
     @Override
     public Response<List<Embedding>> embedAll(List<TextSegment> textSegments) {
       return Response.from(List.of());

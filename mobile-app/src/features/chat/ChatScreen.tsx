@@ -44,6 +44,10 @@ type ChatHistoryResponse = {
   }>;
 };
 
+/**
+ * Local-only welcome message shown when no server history exists.
+ * This is never sent to the backend; it's a UI convenience for new users.
+ */
 const WELCOME_MESSAGE: ChatMessage = {
   id: 'welcome-ai',
   text: 'Chao ban, minh la tro ly SmartFridge. Hom nay ban muon quan ly tu lanh hay tim mon an nao?',
@@ -51,11 +55,24 @@ const WELCOME_MESSAGE: ChatMessage = {
   timestamp: new Date().toISOString(),
 };
 
+/**
+ * Number of most-recent messages to show initially (lazy load strategy).
+ */
 const INITIAL_VISIBLE_COUNT = 6;
+/**
+ * How many more messages to reveal when the user taps "load more".
+ */
 const LOAD_MORE_STEP = 6;
+/**
+ * How many historical messages to fetch from the server per load.
+ * Balances freshness with API and rendering cost.
+ */
 const HISTORY_FETCH_LIMIT = 50;
 const MIN_MESSAGES_FOR_LOAD_MORE = 8;
 
+/**
+ * Format a message timestamp for display using the Vietnamese locale.
+ */
 const formatMessageTime = (raw: string): string => {
   if (!raw) {
     return '';
@@ -74,6 +91,11 @@ const formatMessageTime = (raw: string): string => {
   });
 };
 
+/**
+ * ChatScreen component: shows conversation history and allows sending messages.
+ * - Uses `useFocusEffect` to refresh messages when navigating back to this screen.
+ * - Uses a `sessionIdRef` to keep session state without triggering re-renders.
+ */
 export const ChatScreen: React.FC = () => {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -86,6 +108,8 @@ export const ChatScreen: React.FC = () => {
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [composerHeight, setComposerHeight] = useState(64);
   const sessionIdRef = useRef<number | null>(null);
+  // sessionIdRef giữ session hiện tại nhưng không gây re-render khi thay đổi
+  // tránh cập nhật UI không cần thiết khi backend trả về id mới
 
   const canSend = useMemo(() => inputText.trim().length > 0 && !isLoading, [inputText, isLoading]);
 
@@ -106,8 +130,10 @@ export const ChatScreen: React.FC = () => {
           const historyData: ChatHistoryResponse | null = payload?.data || payload || null;
           const messagesData = historyData?.messages || [];
 
+          // Lưu sessionId mà server trả về vào ref để dùng cho lần gửi tiếp theo
           sessionIdRef.current = historyData?.sessionId ?? null;
 
+          // Nếu server có lịch sử, chuyển đổi sang định dạng UI và hiển thị
           if (Array.isArray(messagesData) && messagesData.length > 0) {
             const formattedMessages = messagesData
               .map((msg) => ({
@@ -118,6 +144,7 @@ export const ChatScreen: React.FC = () => {
               }));
 
             setMessages(formattedMessages);
+            // Hiển thị một phần lịch sử ban đầu để tránh render quá nhiều item
             setVisibleCount(Math.min(INITIAL_VISIBLE_COUNT, formattedMessages.length));
             if (__DEV__) {
               console.log(
@@ -160,6 +187,9 @@ export const ChatScreen: React.FC = () => {
     return messages.slice(Math.max(0, messages.length - visibleCount));
   }, [messages, visibleCount]);
 
+  // visibleCount implements a lazy-load window: only the last N messages are rendered
+  // to improve performance on long histories.
+
   const hiddenMessageCount = Math.max(0, messages.length - visibleMessages.length);
 
   useEffect(() => {
@@ -168,6 +198,7 @@ export const ChatScreen: React.FC = () => {
     }
 
     const onShow = (event: KeyboardEvent) => {
+      // Android keyboard heights vary by device/version; track manually for stable layout
       setKeyboardHeight(event.endCoordinates?.height ?? 0);
       requestAnimationFrame(() => listRef.current?.scrollToEnd({ animated: true }));
     };
@@ -214,6 +245,7 @@ export const ChatScreen: React.FC = () => {
       timestamp: new Date().toISOString(),
     };
 
+    // Optimistic update: show user's message immediately for snappy UI
     appendMessage(userMessage);
     setInputText('');
     setIsLoading(true);
@@ -362,6 +394,7 @@ export const ChatScreen: React.FC = () => {
           </View>
         ) : null}
 
+        {/* useSafeAreaInsets() ensures composer padding accounts for notch/rounded corners */}
         <View
           onLayout={(event) => setComposerHeight(event.nativeEvent.layout.height)}
           style={[

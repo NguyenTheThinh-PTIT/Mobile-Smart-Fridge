@@ -17,6 +17,11 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
+/**
+ * ReportService produces aggregated reports about household food usage,
+ * waste, cooking trends and insights. Queries prefer DB-side aggregation
+ * for performance and return compact DTOs for the frontend.
+ */
 public class ReportService {
 
   private final JdbcTemplate jdbcTemplate;
@@ -27,12 +32,23 @@ public class ReportService {
     this.authService = authService;
   }
 
+  /**
+   * Build a report summary for the given period. Composes counts, trends and a
+   * small
+   * recent cooking history (limit=2) for dashboard display.
+   * 
+   * @param authorizationHeader JWT Authorization header
+   * @param period              report period (WEEK|MONTH|YEAR)
+   */
   public ReportDtos.ReportSummaryResponse getSummary(
       String authorizationHeader, ReportDtos.ReportPeriod period) {
     Long userId = authService.requireUserIdFromAuthorizationHeader(authorizationHeader);
     DateRange dateRange = resolveDateRange(period);
     Long householdId = resolveReportHouseholdId(userId, dateRange);
 
+    // Compose the summary from lower-level queries. Cooking history is limited
+    // to a small number (2) here to keep the summary payload compact for the
+    // dashboard.
     int consumedCount = getConsumedCount(householdId, dateRange);
     int wasteCount = getWasteCount(householdId, dateRange);
     double wasteRatePercent = calculateWasteRatePercent(consumedCount, wasteCount);
@@ -46,6 +62,11 @@ public class ReportService {
         getCookingHistoryItems(householdId, dateRange, 2));
   }
 
+  /**
+   * Return aggregated consumed foods for the household over the period.
+   * Joins meal->dish->recipe_food->food to compute consumed ingredient
+   * quantities.
+   */
   public ReportDtos.FoodListResponse getConsumedFoods(
       String authorizationHeader, ReportDtos.ReportPeriod period, String query) {
     Long userId = authService.requireUserIdFromAuthorizationHeader(authorizationHeader);
@@ -54,9 +75,10 @@ public class ReportService {
 
     String search = normalizeSearch(query);
 
-    List<RawFoodStat> items =
-        jdbcTemplate.query(
-            """
+    // Query path: meal -> meal_dish -> dish -> recipe_food -> food
+    // Aggregates total required ingredient quantities across scheduled meals.
+    List<RawFoodStat> items = jdbcTemplate.query(
+        """
             SELECT f.name AS food_name,
                    COALESCE(SUM(rf.require_quantity), 0) AS total_quantity,
                    COALESCE(MIN(rf.unit), 'đơn vị') AS unit,
@@ -72,21 +94,26 @@ public class ReportService {
             GROUP BY f.name
             ORDER BY total_quantity DESC, food_name ASC
             """,
-            (rs, rowNum) ->
-                new RawFoodStat(
-                    rs.getString("food_name"),
-                    rs.getDouble("total_quantity"),
-                    rs.getString("unit"),
-                    rs.getInt("occurrence_count")),
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()),
-            search,
-            "%" + search + "%");
+        (rs, rowNum) -> new RawFoodStat(
+            rs.getString("food_name"),
+            rs.getDouble("total_quantity"),
+            rs.getString("unit"),
+            rs.getInt("occurrence_count")),
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()),
+        search,
+        "%" + search + "%");
 
     return new ReportDtos.FoodListResponse(period, finalizeFoodStats(items));
   }
 
+  /**
+   * Return aggregated wasted foods (expired/discarded) for the household over the
+   * period.
+   * Filters inventory batches by status and uses entry_date as the event
+   * timestamp.
+   */
   public ReportDtos.FoodListResponse getWastedFoods(
       String authorizationHeader, ReportDtos.ReportPeriod period, String query) {
     Long userId = authService.requireUserIdFromAuthorizationHeader(authorizationHeader);
@@ -95,9 +122,11 @@ public class ReportService {
 
     String search = normalizeSearch(query);
 
-    List<RawFoodStat> items =
-        jdbcTemplate.query(
-            """
+    // Wasted foods are determined by inventory batch status. We filter
+    // by statuses that indicate disposal ('expired','wasted','discarded')
+    // and use the batch entry_date as the event timestamp.
+    List<RawFoodStat> items = jdbcTemplate.query(
+        """
             SELECT f.name AS food_name,
                    COALESCE(SUM(ib.quantity), 0) AS total_quantity,
                    COALESCE(MIN(ib.unit), 'đơn vị') AS unit,
@@ -112,21 +141,24 @@ public class ReportService {
             GROUP BY f.name
             ORDER BY total_quantity DESC, food_name ASC
             """,
-            (rs, rowNum) ->
-                new RawFoodStat(
-                    rs.getString("food_name"),
-                    rs.getDouble("total_quantity"),
-                    rs.getString("unit"),
-                    rs.getInt("occurrence_count")),
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()),
-            search,
-            "%" + search + "%");
+        (rs, rowNum) -> new RawFoodStat(
+            rs.getString("food_name"),
+            rs.getDouble("total_quantity"),
+            rs.getString("unit"),
+            rs.getInt("occurrence_count")),
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()),
+        search,
+        "%" + search + "%");
 
     return new ReportDtos.FoodListResponse(period, finalizeFoodStats(items));
   }
 
+  /**
+   * Return recent cooking history items (dishes) for the period with ingredients
+   * and a mock rating.
+   */
   public ReportDtos.CookingHistoryResponse getCookingHistory(
       String authorizationHeader, ReportDtos.ReportPeriod period, int limit) {
     Long userId = authService.requireUserIdFromAuthorizationHeader(authorizationHeader);
@@ -134,10 +166,16 @@ public class ReportService {
     Long householdId = resolveReportHouseholdId(userId, dateRange);
 
     int safeLimit = Math.max(1, Math.min(limit, 100));
+    // Cooking history aggregates ingredient names (STRING_AGG) for display
+    // and uses a deterministic mock rating to populate the UI.
     return new ReportDtos.CookingHistoryResponse(
         period, getCookingHistoryItems(householdId, dateRange, safeLimit));
   }
 
+  /**
+   * Return report insights grouped into expiry risk, meal type distribution,
+   * waste by category and top consumed foods.
+   */
   public ReportDtos.ReportInsightsResponse getInsights(
       String authorizationHeader, ReportDtos.ReportPeriod period) {
     Long userId = authService.requireUserIdFromAuthorizationHeader(authorizationHeader);
@@ -154,6 +192,7 @@ public class ReportService {
 
   private List<ReportDtos.CookingHistoryItem> getCookingHistoryItems(
       Long householdId, DateRange dateRange, int limit) {
+    // Build recent cooking history with ingredient lists and a mock rating.
     return jdbcTemplate.query(
         """
             SELECT d.id AS dish_id,
@@ -175,15 +214,14 @@ public class ReportService {
             ORDER BY scheduled_at DESC
             LIMIT ?
             """,
-        (rs, rowNum) ->
-            new ReportDtos.CookingHistoryItem(
-                rs.getLong("dish_id"),
-                rs.getString("dish_name"),
-                rs.getString("ingredients"),
-                rs.getBigDecimal("rating").doubleValue(),
-                rs.getInt("cook_minutes"),
-                toLocalDateTime(rs.getTimestamp("scheduled_at")),
-                rs.getString("image_url")),
+        (rs, rowNum) -> new ReportDtos.CookingHistoryItem(
+            rs.getLong("dish_id"),
+            rs.getString("dish_name"),
+            rs.getString("ingredients"),
+            rs.getBigDecimal("rating").doubleValue(),
+            rs.getInt("cook_minutes"),
+            toLocalDateTime(rs.getTimestamp("scheduled_at")),
+            rs.getString("image_url")),
         householdId,
         Date.valueOf(dateRange.startDate()),
         Date.valueOf(dateRange.endDate()),
@@ -191,6 +229,10 @@ public class ReportService {
   }
 
   private List<ReportDtos.ExpiryRiskItem> getExpiryRiskItems(Long householdId) {
+    // Expiry risk levels:
+    // - EXPIRED: expiration_date < CURRENT_DATE
+    // - EXPIRING_SOON: expiration_date <= CURRENT_DATE + 3 days
+    // - UPCOMING: expiration_date <= CURRENT_DATE + 14 days
     return jdbcTemplate.query(
         """
             SELECT f.name AS food_name,
@@ -213,24 +255,21 @@ public class ReportService {
             ORDER BY ib.expiration_date ASC, ib.quantity DESC
             LIMIT 20
                       """,
-        (rs, rowNum) ->
-            new ReportDtos.ExpiryRiskItem(
-                rs.getString("food_name"),
-                rs.getDouble("quantity"),
-                rs.getString("unit"),
-                rs.getDate("expiration_date").toLocalDate(),
-                (int)
-                    ChronoUnit.DAYS.between(
-                        LocalDate.now(), rs.getDate("expiration_date").toLocalDate()),
-                rs.getString("risk_level")),
+        (rs, rowNum) -> new ReportDtos.ExpiryRiskItem(
+            rs.getString("food_name"),
+            rs.getDouble("quantity"),
+            rs.getString("unit"),
+            rs.getDate("expiration_date").toLocalDate(),
+            (int) ChronoUnit.DAYS.between(
+                LocalDate.now(), rs.getDate("expiration_date").toLocalDate()),
+            rs.getString("risk_level")),
         householdId);
   }
 
   private List<ReportDtos.CookingTrendPoint> getCookingTrendByDay(
       Long householdId, DateRange dateRange) {
-    List<ReportDtos.CookingTrendPoint> raw =
-        jdbcTemplate.query(
-            """
+    List<ReportDtos.CookingTrendPoint> raw = jdbcTemplate.query(
+        """
             WITH daily_count AS (
               SELECT EXTRACT(ISODOW FROM m.schedule_date)::int AS dow,
                    COUNT(md.id) AS total_count
@@ -244,19 +283,21 @@ public class ReportService {
             FROM daily_count
             ORDER BY dow ASC
                       """,
-            (rs, rowNum) ->
-                new ReportDtos.CookingTrendPoint(
-                    toDayLabel(rs.getInt("dow")), rs.getInt("total_count")),
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()));
+        (rs, rowNum) -> new ReportDtos.CookingTrendPoint(
+            toDayLabel(rs.getInt("dow")), rs.getInt("total_count")),
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()));
 
+    // Use ISODOW (1=Mon..7=Sun) so weekdays are consistently labelled.
     Map<String, Integer> byLabel = new HashMap<>();
     for (ReportDtos.CookingTrendPoint point : raw) {
       byLabel.put(point.label(), point.count());
     }
 
     List<ReportDtos.CookingTrendPoint> completed = new ArrayList<>();
+    // Ensure all 7 days are present (fill missing days with zero) for chart
+    // completeness.
     for (int day = 1; day <= 7; day++) {
       String label = toDayLabel(day);
       completed.add(new ReportDtos.CookingTrendPoint(label, byLabel.getOrDefault(label, 0)));
@@ -265,27 +306,25 @@ public class ReportService {
   }
 
   private int getConsumedCount(Long householdId, DateRange dateRange) {
-    Integer count =
-        jdbcTemplate.queryForObject(
-            """
+    Integer count = jdbcTemplate.queryForObject(
+        """
             SELECT COALESCE(COUNT(*), 0)
             FROM meal m
             JOIN meal_dish md ON md.meal_id = m.id
             WHERE m.household_id = ?
               AND m.schedule_date BETWEEN ? AND ?
             """,
-            Integer.class,
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()));
+        Integer.class,
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()));
 
     return count == null ? 0 : count;
   }
 
   private int getWasteCount(Long householdId, DateRange dateRange) {
-    Integer count =
-        jdbcTemplate.queryForObject(
-            """
+    Integer count = jdbcTemplate.queryForObject(
+        """
             SELECT COALESCE(COUNT(*), 0)
             FROM inventory i
             JOIN inventory_batch ib ON ib.inventory_id = i.id
@@ -293,16 +332,17 @@ public class ReportService {
               AND lower(COALESCE(ib.status, '')) IN ('expired', 'wasted', 'discarded')
               AND ib.entry_date BETWEEN ? AND ?
             """,
-            Integer.class,
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()));
+        Integer.class,
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()));
 
     return count == null ? 0 : count;
   }
 
   private double calculateWasteRatePercent(int consumedCount, int wasteCount) {
     int total = consumedCount + wasteCount;
+    // Return 0.0 when there is no activity to avoid division by zero
     if (total <= 0) {
       return 0.0;
     }
@@ -310,24 +350,24 @@ public class ReportService {
   }
 
   private Long resolveReportHouseholdId(Long userId, DateRange dateRange) {
-    Long userHouseholdId =
-        jdbcTemplate.query(
-            "SELECT household_id FROM household_member WHERE user_id = ? ORDER BY id ASC LIMIT 1",
-            rs -> rs.next() ? rs.getLong("household_id") : null,
-            userId);
+    Long userHouseholdId = jdbcTemplate.query(
+        "SELECT household_id FROM household_member WHERE user_id = ? ORDER BY id ASC LIMIT 1",
+        rs -> rs.next() ? rs.getLong("household_id") : null,
+        userId);
 
     if (userHouseholdId != null) {
       return userHouseholdId;
     }
 
+    // Reports must be tied to a household. If no household member mapping
+    // is found for the user, we cannot build household-scoped reports.
     throw new IllegalStateException("Cannot resolve household for report data");
   }
 
   private List<ReportDtos.MealTypePoint> getMealTypeDistribution(
       Long householdId, DateRange dateRange) {
-    List<MealTypeRaw> rows =
-        jdbcTemplate.query(
-            """
+    List<MealTypeRaw> rows = jdbcTemplate.query(
+        """
             SELECT COALESCE(m.meal_type, 'OTHER') AS meal_type,
                    COUNT(*) AS total_count
             FROM meal m
@@ -336,10 +376,10 @@ public class ReportService {
             GROUP BY COALESCE(m.meal_type, 'OTHER')
             ORDER BY total_count DESC
             """,
-            (rs, rowNum) -> new MealTypeRaw(rs.getString("meal_type"), rs.getInt("total_count")),
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()));
+        (rs, rowNum) -> new MealTypeRaw(rs.getString("meal_type"), rs.getInt("total_count")),
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()));
 
     int total = rows.stream().mapToInt(MealTypeRaw::count).sum();
     List<ReportDtos.MealTypePoint> points = new ArrayList<>();
@@ -352,9 +392,10 @@ public class ReportService {
 
   private List<ReportDtos.CategoryWastePoint> getWasteByCategory(
       Long householdId, DateRange dateRange) {
-    List<CategoryWasteRaw> rows =
-        jdbcTemplate.query(
-            """
+    // LEFT JOIN category because some foods may not have a category; use 'Khác' as
+    // fallback.
+    List<CategoryWasteRaw> rows = jdbcTemplate.query(
+        """
             SELECT COALESCE(c.name, 'Khác') AS category_name,
                    COALESCE(SUM(ib.quantity), 0) AS total_quantity,
                    COALESCE(MIN(ib.unit), 'đơn vị') AS unit
@@ -368,14 +409,13 @@ public class ReportService {
             GROUP BY COALESCE(c.name, 'Khác')
             ORDER BY total_quantity DESC
             """,
-            (rs, rowNum) ->
-                new CategoryWasteRaw(
-                    rs.getString("category_name"),
-                    rs.getDouble("total_quantity"),
-                    rs.getString("unit")),
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()));
+        (rs, rowNum) -> new CategoryWasteRaw(
+            rs.getString("category_name"),
+            rs.getDouble("total_quantity"),
+            rs.getString("unit")),
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()));
 
     double totalQuantity = rows.stream().mapToDouble(CategoryWasteRaw::quantity).sum();
     List<ReportDtos.CategoryWastePoint> points = new ArrayList<>();
@@ -389,9 +429,8 @@ public class ReportService {
 
   private List<ReportDtos.FoodStatItem> getTopConsumedFoods(
       Long householdId, DateRange dateRange, int limit) {
-    List<RawFoodStat> rows =
-        jdbcTemplate.query(
-            """
+    List<RawFoodStat> rows = jdbcTemplate.query(
+        """
             SELECT f.name AS food_name,
                    COALESCE(SUM(rf.require_quantity), 0) AS total_quantity,
                    COALESCE(MIN(rf.unit), 'đơn vị') AS unit,
@@ -407,16 +446,15 @@ public class ReportService {
             ORDER BY total_quantity DESC, food_name ASC
             LIMIT ?
             """,
-            (rs, rowNum) ->
-                new RawFoodStat(
-                    rs.getString("food_name"),
-                    rs.getDouble("total_quantity"),
-                    rs.getString("unit"),
-                    rs.getInt("occurrence_count")),
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()),
-            limit);
+        (rs, rowNum) -> new RawFoodStat(
+            rs.getString("food_name"),
+            rs.getDouble("total_quantity"),
+            rs.getString("unit"),
+            rs.getInt("occurrence_count")),
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()),
+        limit);
 
     return finalizeFoodStats(rows);
   }
@@ -437,22 +475,20 @@ public class ReportService {
   }
 
   private boolean hasReportData(Long householdId, DateRange dateRange) {
-    Integer mealCount =
-        jdbcTemplate.queryForObject(
-            """
+    Integer mealCount = jdbcTemplate.queryForObject(
+        """
             SELECT COUNT(*)
             FROM meal m
             WHERE m.household_id = ?
               AND m.schedule_date BETWEEN ? AND ?
             """,
-            Integer.class,
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()));
+        Integer.class,
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()));
 
-    Integer wasteCount =
-        jdbcTemplate.queryForObject(
-            """
+    Integer wasteCount = jdbcTemplate.queryForObject(
+        """
             SELECT COUNT(*)
             FROM inventory i
             JOIN inventory_batch ib ON ib.inventory_id = i.id
@@ -460,14 +496,17 @@ public class ReportService {
               AND lower(COALESCE(ib.status, '')) IN ('expired', 'wasted', 'discarded')
               AND ib.entry_date BETWEEN ? AND ?
             """,
-            Integer.class,
-            householdId,
-            Date.valueOf(dateRange.startDate()),
-            Date.valueOf(dateRange.endDate()));
+        Integer.class,
+        householdId,
+        Date.valueOf(dateRange.startDate()),
+        Date.valueOf(dateRange.endDate()));
 
     return (mealCount != null && mealCount > 0) || (wasteCount != null && wasteCount > 0);
   }
 
+  // resolveDateRange returns an inclusive rolling window for the requested
+  // period.
+  // The offsets (29 days, 364 days) are convenient defaults for UI charts.
   private DateRange resolveDateRange(ReportDtos.ReportPeriod period) {
     LocalDate today = LocalDate.now();
 
@@ -505,11 +544,15 @@ public class ReportService {
     };
   }
 
-  private record RawFoodStat(String name, double quantity, String unit, int occurrenceCount) {}
+  private record RawFoodStat(String name, double quantity, String unit, int occurrenceCount) {
+  }
 
-  private record MealTypeRaw(String mealType, int count) {}
+  private record MealTypeRaw(String mealType, int count) {
+  }
 
-  private record CategoryWasteRaw(String categoryName, double quantity, String unit) {}
+  private record CategoryWasteRaw(String categoryName, double quantity, String unit) {
+  }
 
-  private record DateRange(LocalDate startDate, LocalDate endDate) {}
+  private record DateRange(LocalDate startDate, LocalDate endDate) {
+  }
 }

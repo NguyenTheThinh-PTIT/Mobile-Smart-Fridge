@@ -84,6 +84,12 @@ export const reportApi = {
     }
   },
 
+  /**
+   * Fetch report summary for the given period.
+   * Response contains: consumedCount, wasteCount, wasteRatePercent,
+   * cookingTrend (7-day points) and a small cookingHistory array.
+   */
+
   getConsumedFoods: async (period: ReportPeriod, query: string): Promise<FoodListResponse> => {
     try {
       return await axiosClient.get('/reports/consumed', { params: { period, query } });
@@ -91,6 +97,11 @@ export const reportApi = {
       throw ExceptionHandler.handleError(error);
     }
   },
+
+  /**
+   * Fetch a list of consumed foods aggregated for the period.
+   * The `query` param is used for case-insensitive name filtering on the server.
+   */
 
   getWastedFoods: async (period: ReportPeriod, query: string): Promise<FoodListResponse> => {
     try {
@@ -100,6 +111,11 @@ export const reportApi = {
     }
   },
 
+  /**
+   * Fetch a list of wasted foods (expired/discarded) for the period.
+   * "Wasted" means inventory batches with status in ('expired','wasted','discarded').
+   */
+
   getCookingHistory: async (period: ReportPeriod): Promise<CookingHistoryResponse> => {
     try {
       return await axiosClient.get('/reports/cooking-history', { params: { period, limit: 50 } });
@@ -108,6 +124,11 @@ export const reportApi = {
     }
   },
 
+  /**
+   * Fetch recent cooking history for the period. Client uses a hardcoded
+   * limit=50 here to bound the response size for list views.
+   */
+
   getInsights: async (period: ReportPeriod): Promise<ReportInsightsResponse> => {
     try {
       return await axiosClient.get('/reports/insights', { params: { period } });
@@ -115,4 +136,9 @@ export const reportApi = {
       throw ExceptionHandler.handleError(error);
     }
   },
+
+  /**
+   * Fetch report insights grouped into: expiryRisk, mealTypeDistribution,
+   * wasteByCategory and topConsumedFoods. Used to populate dashboard insights.
+   */
 };
