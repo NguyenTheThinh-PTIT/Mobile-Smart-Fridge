@@ -1,0 +1,903 @@
+openapi: 3.0.3
+info:
+  title: Fridge AI Backend API
+  version: 1.0.0
+  description: OpenAPI spec generated from current Spring controllers.
+servers:
+  - url: http://localhost:8080
+    description: Local backend
+
+tags:
+  - name: Auth
+  - name: Users
+  - name: Current User
+  - name: Inventory App
+  - name: Inventory Core
+  - name: Planner
+  - name: Social
+  - name: Analytics
+  - name: Household
+
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /api/v1/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /api/v1/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+
+  /api/v1/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Logout
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/users:
+    get:
+      tags: [Users]
+      summary: Get all users
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUserList'
+    post:
+      tags: [Users]
+      summary: Create user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUser'
+
+  /api/v1/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUser'
+    put:
+      tags: [Users]
+      summary: Update user
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseUser'
+    delete:
+      tags: [Users]
+      summary: Delete user
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/users/me:
+    get:
+      tags: [Current User]
+      summary: Get current user
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+    put:
+      tags: [Current User]
+      summary: Update current user profile
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateProfileRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserDto'
+
+  /api/v1/inventory:
+    get:
+      tags: [Inventory App]
+      summary: Get current user inventory items
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/InventoryItemDto'
+    post:
+      tags: [Inventory App]
+      summary: Create inventory item
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryItemRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemDto'
+
+  /api/v1/inventory/{id}:
+    put:
+      tags: [Inventory App]
+      summary: Update inventory item
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InventoryItemRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InventoryItemDto'
+    delete:
+      tags: [Inventory App]
+      summary: Delete inventory item
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/inventories/{inventoryId}/items:
+    get:
+      tags: [Inventory Core]
+      summary: Get items by inventory ID
+      parameters:
+        - $ref: '#/components/parameters/InventoryIdPath'
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseItemList'
+    post:
+      tags: [Inventory Core]
+      summary: Create item in inventory
+      parameters:
+        - $ref: '#/components/parameters/InventoryIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseItem'
+
+  /api/v1/inventories/{inventoryId}/items/{itemId}:
+    get:
+      tags: [Inventory Core]
+      summary: Get item by ID
+      parameters:
+        - $ref: '#/components/parameters/InventoryIdPath'
+        - $ref: '#/components/parameters/ItemIdPath'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseItem'
+    put:
+      tags: [Inventory Core]
+      summary: Update item
+      parameters:
+        - $ref: '#/components/parameters/InventoryIdPath'
+        - $ref: '#/components/parameters/ItemIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ItemRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseItem'
+    delete:
+      tags: [Inventory Core]
+      summary: Delete item
+      parameters:
+        - $ref: '#/components/parameters/InventoryIdPath'
+        - $ref: '#/components/parameters/ItemIdPath'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/users/{userId}/meals:
+    get:
+      tags: [Planner]
+      summary: Get meal plans by user
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseMealPlanList'
+    post:
+      tags: [Planner]
+      summary: Create meal plan
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealPlanRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseMealPlan'
+
+  /api/v1/users/{userId}/meals/{mealId}:
+    get:
+      tags: [Planner]
+      summary: Get meal plan by ID
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+        - $ref: '#/components/parameters/MealIdPath'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseMealPlan'
+    put:
+      tags: [Planner]
+      summary: Update meal plan
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+        - $ref: '#/components/parameters/MealIdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MealPlanRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseMealPlan'
+    delete:
+      tags: [Planner]
+      summary: Delete meal plan
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+        - $ref: '#/components/parameters/MealIdPath'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/recipe-shares:
+    get:
+      tags: [Social]
+      summary: Get all recipe shares
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecipeShareList'
+    post:
+      tags: [Social]
+      summary: Create recipe share
+      parameters:
+        - $ref: '#/components/parameters/XUserIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeShareRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecipeShare'
+
+  /api/v1/recipe-shares/{id}:
+    get:
+      tags: [Social]
+      summary: Get recipe share by ID
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecipeShare'
+    put:
+      tags: [Social]
+      summary: Update recipe share
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecipeShareRequest'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecipeShare'
+    delete:
+      tags: [Social]
+      summary: Delete recipe share
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/recipe-shares/user/{userId}:
+    get:
+      tags: [Social]
+      summary: Get recipe shares by user
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseRecipeShareList'
+
+  /api/v1/recipe-shares/{id}/like:
+    post:
+      tags: [Social]
+      summary: Like recipe share
+      parameters:
+        - $ref: '#/components/parameters/IdPath'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/analytics/events:
+    post:
+      tags: [Analytics]
+      summary: Create analytics event
+      parameters:
+        - $ref: '#/components/parameters/XUserIdHeader'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyticsEventRequest'
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseAnalyticsEvent'
+
+  /api/v1/analytics/events/user/{userId}:
+    get:
+      tags: [Analytics]
+      summary: Get analytics events by user
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseAnalyticsEventList'
+
+  /api/v1/analytics/events/type/{eventType}:
+    get:
+      tags: [Analytics]
+      summary: Get analytics events by type
+      parameters:
+        - name: eventType
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseAnalyticsEventList'
+
+  /api/v1/analytics/events/user/{userId}/type/{eventType}:
+    get:
+      tags: [Analytics]
+      summary: Get analytics events by user and type
+      parameters:
+        - $ref: '#/components/parameters/UserIdPath'
+        - name: eventType
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiResponseAnalyticsEventList'
+
+  /api/v1/household/overview:
+    get:
+      tags: [Household]
+      summary: Get household overview
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HouseholdOverviewDto'
+
+  /api/v1/household/invite/regenerate:
+    post:
+      tags: [Household]
+      summary: Regenerate invite
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+      responses:
+        '200':
+          description: Success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteDto'
+
+  /api/v1/household/members/{memberId}/transfer-owner:
+    post:
+      tags: [Household]
+      summary: Transfer household ownership
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+        - $ref: '#/components/parameters/MemberIdPath'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/household/members/{memberId}:
+    delete:
+      tags: [Household]
+      summary: Remove household member
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+        - $ref: '#/components/parameters/MemberIdPath'
+      responses:
+        '200':
+          description: Success
+
+  /api/v1/household/leave:
+    post:
+      tags: [Household]
+      summary: Leave household
+      parameters:
+        - $ref: '#/components/parameters/AuthorizationHeader'
+      responses:
+        '200':
+          description: Success
+
+components:
+  parameters:
+    AuthorizationHeader:
+      name: Authorization
+      in: header
+      required: false
+      schema:
+        type: string
+    XUserIdHeader:
+      name: X-User-Id
+      in: header
+      required: true
+      schema:
+        type: integer
+        format: int64
+    IdPath:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    UserIdPath:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    MemberIdPath:
+      name: memberId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    InventoryIdPath:
+      name: inventoryId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ItemIdPath:
+      name: itemId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    MealIdPath:
+      name: mealId
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+
+  schemas:
+    LoginRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+      required: [email, password]
+
+    RegisterRequest:
+      type: object
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+        name:
+          type: string
+      required: [email, password, name]
+
+    RefreshRequest:
+      type: object
+      properties:
+        token:
+          type: string
+      required: [token]
+
+    UserDto:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        name:
+          type: string
+
+    LoginResponse:
+      type: object
+      properties:
+        token:
+          type: string
+        user:
+          $ref: '#/components/schemas/UserDto'
+
+    UpdateProfileRequest:
+      type: object
+      properties:
+        name:
+          type: string
+      required: [name]
+
+    UserRequest:
+      type: object
+      additionalProperties: true
+
+    UserResponse:
+      type: object
+      additionalProperties: true
+
+    ItemRequest:
+      type: object
+      additionalProperties: true
+
+    ItemResponse:
+      type: object
+      additionalProperties: true
+
+    MealPlanRequest:
+      type: object
+      additionalProperties: true
+
+    MealPlanResponse:
+      type: object
+      additionalProperties: true
+
+    RecipeShareRequest:
+      type: object
+      additionalProperties: true
+
+    RecipeShareResponse:
+      type: object
+      additionalProperties: true
+
+    AnalyticsEventRequest:
+      type: object
+      additionalProperties: true
+
+    AnalyticsEventResponse:
+      type: object
+      additionalProperties: true
+
+    InventoryItemRequest:
+      type: object
+      additionalProperties: true
+
+    InventoryItemDto:
+      type: object
+      additionalProperties: true
+
+    HouseholdOverviewDto:
+      type: object
+      additionalProperties: true
+
+    InviteDto:
+      type: object
+      additionalProperties: true
+
+    ApiResponseUser:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/UserResponse'
+
+    ApiResponseUserList:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/UserResponse'
+
+    ApiResponseItem:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/ItemResponse'
+
+    ApiResponseItemList:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/ItemResponse'
+
+    ApiResponseMealPlan:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/MealPlanResponse'
+
+    ApiResponseMealPlanList:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/MealPlanResponse'
+
+    ApiResponseRecipeShare:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/RecipeShareResponse'
+
+    ApiResponseRecipeShareList:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecipeShareResponse'
+
+    ApiResponseAnalyticsEvent:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          $ref: '#/components/schemas/AnalyticsEventResponse'
+
+    ApiResponseAnalyticsEventList:
+      type: object
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnalyticsEventResponse'

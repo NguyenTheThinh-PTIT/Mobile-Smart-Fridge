@@ -1,0 +1,125 @@
+spring:
+  application:
+    name: fridge-ai-backend
+
+  # JPA & Hibernate Configuration
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        jdbc:
+          batch_size: 20
+          fetch_size: 50
+        order_inserts: true
+        order_updates: true
+    open-in-view: false
+
+  # PostgreSQL Datasource
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:postgres}:${DB_PORT:5432}/${DB_NAME:fridge_ai}?useSSL=false&serverTimezone=UTC
+    username: ${DB_USER:fridge_user}
+    password: ${DB_PASSWORD:fridge_password}
+    driver-class-name: org.postgresql.Driver
+
+    # Connection Pool Configuration
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 20000
+      idle-timeout: 300000
+      max-lifetime: 1200000
+      # auto-commit: true
+  # Flyway Configuration
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+    baseline-version: 0
+    out-of-order: false
+
+  # Servlet Configuration
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+# Server Configuration
+server:
+  port: ${SERVER_PORT:8080}
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    min-response-size: 1024
+    mime-types:
+      - text/html
+      - text/xml
+      - text/plain
+      - text/css
+      - application/javascript
+      - application/json
+
+# Logging Configuration
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    com.ai.fridge: DEBUG
+    com.ai.fridge.modules.app.chat: DEBUG
+    org.springframework.web: INFO
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+    dev.langchain4j: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+  file:
+    name: logs/application.log
+    max-size: 10MB
+    max-history: 30
+
+# Management Endpoints (Actuator)
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,env,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      simple:
+        enabled: true
+
+gemini:
+  api-key: ${GEMINI_API_KEY:}
+  model-name: ${GEMINI_MODEL_NAME:gemini-1.5-flash}
+  embedding-model-name: ${GEMINI_EMBEDDING_MODEL_NAME:gemini-embedding-001}
+
+app:
+  auth:
+    jwt:
+      secret: ${JWT_SECRET:replace-me-with-at-least-32-characters-secret}
+      issuer: ${JWT_ISSUER:fridge-ai-backend}
+      access-token-expiration-minutes: ${JWT_ACCESS_EXPIRATION_MINUTES:30}
+      refresh-token-expiration-days: ${JWT_REFRESH_EXPIRATION_DAYS:30}
+    google:
+      client-id: ${GOOGLE_CLIENT_ID:}
+
+  mail:
+    host: ${MAIL_HOST:sandbox.smtp.mailtrap.io}
+    port: ${MAIL_PORT:2525}
+    username: ${MAIL_USERNAME:7d10c1280781e9}
+    password: ${MAIL_PASSWORD:8aa21e62e80105}
+    properties:
+      mail:
+        smtp:
+          auth: ${MAIL_SMTP_AUTH:true}
+          starttls:
+            enable: ${MAIL_SMTP_STARTTLS_ENABLE:true}
+            required: ${MAIL_SMTP_STARTTLS_REQUIRED:false}
+    from: ${MAIL_FROM:no-reply@fridge-ai.local}

@@ -1,0 +1,41 @@
+# VCS
+.git
+.gitignore
+
+# Dependencies and build cache
+node_modules
+.expo
+.expo-shared
+web-build
+dist
+coverage
+
+# Tests / caches
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+.npm
+
+# IDE / editor
+.idea
+.vscode
+
+# Local env / secrets
+.env
+.env.*
+
+# Logs and temp
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.log
+*.tmp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Mobile native artifacts (if generated)
+android
+ios

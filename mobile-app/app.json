@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "Fridge AI",
+    "slug": "fridge-ai-app",
+    "scheme": "fridgeai",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "plugins": [
+      "@react-native-google-signin/google-signin",
+      "@react-native-community/datetimepicker"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "6bff0a97-123b-450a-97b8-582b2778fdbe"
+      }
+    },
+    "android": {
+      "package": "com.phucmouse.fridgeaiapp"
+    }
+  }
+}
+

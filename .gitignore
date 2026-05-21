@@ -1,0 +1,24 @@
+.env
+.env.local
+node_modules/
+/target
+.env.local
+
+# Build artifacts
+backend/target/
+target/
+*.class
+
+# Logs
+backend/logs/
+*.log
+*.gz
+
+# Secrets
+backend/.env
+
+# Expo
+.expo/
+.expo-shared/
+web-build/
+dist/

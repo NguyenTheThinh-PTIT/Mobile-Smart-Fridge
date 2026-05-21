@@ -1,0 +1,185 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg15
+    container_name: fridge-ai-postgres
+    env_file:
+      - .env
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-fridge_ai}
+      POSTGRES_USER: ${POSTGRES_USER:-fridge_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-fridge_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-fridge_user} -d ${POSTGRES_DB:-fridge_ai} -h localhost -p 5432",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+  # React Native Development Server
+  react-native-dev:
+    image: node:20-alpine
+    working_dir: /app
+    init: true
+    volumes:
+      - ./:/app
+      - /app/node_modules
+    ports:
+      - "8081:8081"
+    command: sh -c "npm ci && npm start"
+    environment:
+      - WATCHMAN_DISABLE=true
+      - NODE_ENV=development
+      - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+    profiles:
+      - dev
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: ./Dockerfile
+    container_name: fridge-ai-backend
+    env_file:
+      - .env
+    init: true
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-fridge_ai}
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-fridge_user}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-fridge_password}
+      SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
+      SPRING_JPA_HIBERNATE_DDL_AUTO: validate
+      SERVER_PORT: 8080
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL_NAME: ${GEMINI_MODEL_NAME:-gemini-1.5-flash}
+      GEMINI_EMBEDDING_MODEL_NAME: ${GEMINI_EMBEDDING_MODEL_NAME:-gemini-embedding-001}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GOOGLE_REDIRECT_URI: ${GOOGLE_REDIRECT_URI:-}
+      SPRING_FLYWAY_REPAIR_ON_MIGRATE: true
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/actuator/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    networks:
+      - fridge-network
+
+
+  # ==================== AI Suggestion Service ====================
+  #
+  # Service: FastAPI AI recommendation service
+  # Purpose: Generate contextual meal suggestions with hybrid retrieval
+  # Port: 8001 (internal), 8001 (external)
+  #
+  ai_service:
+    build:
+      context: .
+      dockerfile: ./ai_service/Dockerfile
+
+    container_name: fridge-ai-ai-service
+    env_file:
+      - .env
+    init: true
+
+    environment:
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-models/gemini-embedding-001}
+      LLM_MODEL: ${LLM_MODEL:-gemini-2.5-flash}
+      EMBEDDING_DIMENSION: ${EMBEDDING_DIMENSION:-3072}
+      TOP_K_RETRIEVAL: ${TOP_K_RETRIEVAL:-20}
+      DATABASE_URL: ${AI_DATABASE_URL:-postgresql+asyncpg://fridge_user:fridge_password@postgres:5432/fridge_ai}
+      REDIS_URL: ${AI_REDIS_URL:-redis://redis:6379/0}
+      OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
+      AI_SERVICE_PORT: ${AI_SERVICE_PORT:-8001}
+      WEATHER_CACHE_TTL_SECONDS: ${WEATHER_CACHE_TTL_SECONDS:-1800}
+      SUGGESTION_CACHE_TTL_SECONDS: ${SUGGESTION_CACHE_TTL_SECONDS:-7200}
+      EXPIRING_THRESHOLD_DAYS: ${EXPIRING_THRESHOLD_DAYS:-3}
+
+    ports:
+      - "8001:8001"
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=ai_service,version=1.0.0"
+
+    networks:
+      - fridge-network
+
+
+  # ==================== Redis Cache ====================
+  #
+  # Service: Redis 7 for AI weather/suggestion caching
+  # Port: 6379 (internal), 6379 (external)
+  #
+  redis:
+    image: redis:7-alpine
+    container_name: fridge-ai-redis
+
+    ports:
+      - "6379:6379"
+
+    command: redis-server --appendonly yes
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+    restart: unless-stopped
+
+    networks:
+      - fridge-network
+
+volumes:
+  postgres_data:
+    driver: local
+    labels:
+      description: "PostgreSQL 15 persistent data for Fridge AI"
+  
+  # Redis data persistence
+  # Stores both RDB snapshots and AOF change log
+  redis_data:
+    driver: local
+    labels:
+      description: "Redis 7 persistent cache for Fridge AI"
+
+networks:
+  fridge-network:
+    name: fridge-network

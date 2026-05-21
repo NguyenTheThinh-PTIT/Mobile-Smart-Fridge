@@ -1,0 +1,31 @@
+# VCS
+.git
+.gitignore
+
+# Build outputs
+target
+build
+out
+
+# IDE / editor
+.idea
+.vscode
+*.iml
+
+# Logs and temp
+logs
+*.log
+*.tmp
+*.swp
+
+# Local env / secrets
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docs and misc not needed for image build
+README.md
+Dockerfile*

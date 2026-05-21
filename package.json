@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "expo-image-picker": "^55.0.17",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.10",
+    "typescript": "~5.9.2"
+  }
+}
